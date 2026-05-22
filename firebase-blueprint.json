@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "PaymentRequest": {
+      "title": "Payment Request",
+      "description": "A payment request bock extracted from an invoice image",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "imagePath": { "type": "string", "description": "Base64 or URL of the image" },
+        "fileName": { "type": "string" },
+        "voucherNo": { "type": "string" },
+        "uploadSource": { "type": "string", "enum": ["MANUAL", "WHATSAPP"] },
+        "recvBankId": { "type": "string" },
+        "recvAccountNo": { "type": "string" },
+        "recvAccountName": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "COMPLETED", "REJECTED"] },
+        "isDuplicateWarning": { "type": "boolean" },
+        "senderAccountId": { "type": "string" },
+        "dealerGroupId": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "aiRawText": { "type": "string" }
+      },
+      "required": ["id", "imagePath", "status", "dealerGroupId", "createdAt"]
+    },
+    "CompanyAccount": {
+      "title": "Company Account",
+      "description": "A bank account owned by the company for funding",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bankId": { "type": "string" },
+        "accountNo": { "type": "string" },
+        "accountAlias": { "type": "string" },
+        "openingBalance": { "type": "number" },
+        "currentBalance": { "type": "number" }
+      },
+      "required": ["id", "bankId", "accountNo", "accountAlias"]
+    },
+    "TransactionLedger": {
+      "title": "Transaction Ledger",
+      "description": "Log of money movements (funding or payments)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["FUNDING", "PAYMENT_OUT"] },
+        "accountId": { "type": "string" },
+        "amount": { "type": "number" },
+        "referenceId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      },
+      "required": ["id", "type", "accountId", "amount", "timestamp"]
+    },
+    "DealerGroup": {
+      "title": "Dealer Group",
+      "description": "A business partner/dealer group",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "AppUser": {
+      "title": "App User",
+      "description": "User account for the platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "STAFF", "DEALER"] },
+        "dealerId": { "type": "string", "description": "Linked dealer ID if role is DEALER" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/payments/{paymentId}": { "schema": "PaymentRequest", "description": "Payment requests from dealer invoices" },
+    "/accounts/{accountId}": { "schema": "CompanyAccount", "description": "Bank accounts for logistics funding" },
+    "/ledger/{ledgerId}": { "schema": "TransactionLedger", "description": "General ledger for auditing" },
+    "/dealers/{dealerId}": { "schema": "DealerGroup", "description": "List of authorized dealer partners" },
+    "/users/{userId}": { "schema": "AppUser", "description": "User profiles and RBAC" }
+  }
+}

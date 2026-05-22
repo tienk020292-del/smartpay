@@ -1,0 +1,6 @@
+{
+  "name": "Smart Pay AI - Financial Gateway",
+  "description": "Unified dealer payment management, AI OCR ingestion, real-time fund tracking, and custom accounting exports.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API", "AI OCR", "VietQR", "Payment Workflow"]
+}

@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Primitives ---
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'ADMIN';
+    }
+
+    function isStaff() {
+      return isSignedIn() && (getUserData().role == 'ADMIN' || getUserData().role == 'STAFF');
+    }
+
+    function isDealer(dealerId) {
+      return isSignedIn() && getUserData().role == 'DEALER' && getUserData().dealerId == dealerId;
+    }
+
+    // --- Validation Helpers ---
+    
+    function isValidAppUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid && // Prevent spoofing
+             data.email is string &&
+             data.role in ['ADMIN', 'STAFF', 'DEALER'] &&
+             (!('dealerId' in data) || isValidId(data.dealerId));
+    }
+
+    function isValidPaymentRequest(data) {
+      return data.keys().hasAll(['id', 'imagePath', 'status', 'dealerGroupId', 'createdAt']) &&
+             data.status in ['PENDING', 'COMPLETED', 'REJECTED'] &&
+             data.imagePath is string && data.imagePath.size() < 10485760 && // 10MB limit for base64
+             data.createdAt is string;
+    }
+
+    // --- Match Groups ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidAppUser(incoming()) && (
+        // Only allow admin to create users OR user creates their own profile with default role
+        // For "admin provided", we might need admin to create first. 
+        // Here we allow self-creation IF user email matches a list or something, 
+        // but for now, simple self-registration if not exists.
+        isAdmin() || (!exists(/databases/$(database)/documents/users/$(userId)) && incoming().role == 'DEALER')
+      );
+      allow update: if isAdmin() && isValidAppUser(incoming()) && 
+                    incoming().uid == existing().uid; // Cannot change UID
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && (isStaff() || isDealer(existing().dealerGroupId));
+      allow list: if isSignedIn() && (
+        isStaff() || (resource.data.dealerGroupId == getUserData().dealerId)
+      );
+      allow create: if isSignedIn() && isValidPaymentRequest(incoming()) && (
+        isStaff() || isDealer(incoming().dealerGroupId)
+      );
+      allow update: if isSignedIn() && (
+        (isStaff() && isValidPaymentRequest(incoming())) ||
+        (isDealer(existing().dealerGroupId) && existing().status == 'PENDING' && incoming().status == 'PENDING')
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    match /ledger/{ledgerId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false; // Immutable audit log
+    }
+
+    match /dealers/{dealerId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
