@@ -25,7 +25,8 @@ import {
   SlidersHorizontal,
   PlusCircle,
   FileDown,
-  ExternalLink
+  ExternalLink,
+  Pencil
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
@@ -99,6 +100,15 @@ export default function App() {
   
   // Account Form state
   const [accountForm, setAccountForm] = useState({
+    bankId: MASTER_BANKS[0].id,
+    accountAlias: '',
+    accountNo: '',
+    openingBalance: 0
+  });
+
+  // Account Edit Form states
+  const [editingAccount, setEditingAccount] = useState<CompanyAccount | null>(null);
+  const [editAccountForm, setEditAccountForm] = useState({
     bankId: MASTER_BANKS[0].id,
     accountAlias: '',
     accountNo: '',
@@ -623,6 +633,79 @@ export default function App() {
     } catch (err: any) {
       triggerAlert("Lỗi khởi tạo tài khoản", err.message || "Lỗi tạo tài khoản");
     }
+  };
+
+  const startEditAccount = (acc: CompanyAccount) => {
+    setEditingAccount(acc);
+    setEditAccountForm({
+      bankId: acc.bankId,
+      accountAlias: acc.accountAlias,
+      accountNo: acc.accountNo,
+      openingBalance: acc.openingBalance || 0
+    });
+  };
+
+  const handleEditAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount) return;
+    if (!editAccountForm.accountAlias || !editAccountForm.accountNo) {
+      triggerAlert("Thiếu thông tin", "Vui lòng điền đủ thông tin tài khoản!");
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('smart_pay_token');
+      const response = await fetch(`/api/accounts/${editingAccount.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          bankId: editAccountForm.bankId,
+          accountAlias: editAccountForm.accountAlias,
+          accountNo: editAccountForm.accountNo,
+          openingBalance: editAccountForm.openingBalance
+        })
+      });
+
+      if (response.ok) {
+        setEditingAccount(null);
+        fetchAllData();
+      } else {
+        const err = await response.json();
+        triggerAlert("Lỗi cập nhật tài khoản", err.error || "Không thể cập nhật tài khoản.");
+      }
+    } catch (err: any) {
+      triggerAlert("Lỗi cập nhật tài khoản", err.message || "Lỗi cập nhật tài khoản");
+    }
+  };
+
+  const handleDeleteAccount = async (id: string, accountAlias: string) => {
+    triggerConfirm(
+      "Xác nhận xóa tài khoản",
+      `Bạn có chắc chắn muốn xóa tài khoản "${accountAlias}"? Thao tác này sẽ xóa tài khoản nguồn khỏi hệ thống.`,
+      async () => {
+        try {
+          const token = localStorage.getItem('smart_pay_token');
+          const response = await fetch(`/api/accounts/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (response.ok) {
+            fetchAllData();
+          } else {
+            const err = await response.json();
+            triggerAlert("Lỗi xóa tài khoản", err.error || "Không thể xóa tài khoản.");
+          }
+        } catch (err: any) {
+          triggerAlert("Lỗi xóa tài khoản", err.message || "Lỗi xóa tài khoản");
+        }
+      }
+    );
   };
 
   const handleFundAccount = async (e: React.FormEvent) => {
@@ -1450,11 +1533,26 @@ export default function App() {
                           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -mr-6 -mt-6"></div>
                           
                           <div>
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center justify-between mb-6 z-10 relative">
                               <div className="h-10 px-4 bg-slate-50 border border-slate-200/50 rounded-xl flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-widest leading-none">
                                 {bankObj ? bankObj.shortName : "NH NGUỒN"}
                               </div>
-                              <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">{acc.id}</span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => startEditAccount(acc)}
+                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"
+                                  title="Chỉnh sửa tài khoản"
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAccount(acc.id, acc.accountAlias)}
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                                  title="Xóa tài khoản"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
                             </div>
 
                             <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Tên gợi nhớ nguồn</span>
@@ -2090,6 +2188,97 @@ export default function App() {
                 >
                   <CheckCircle2 size={20} />
                   Xác nhận Tạo tài khoản
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: UPDATE / EDIT EXISTING SOURCE ACCOUNT */}
+      <AnimatePresence>
+        {editingAccount && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-8 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-lg rounded-[48px] p-12 shadow-2xl relative"
+            >
+              <button 
+                onClick={() => setEditingAccount(null)} 
+                className="absolute top-10 right-10 p-3 bg-slate-50 hover:bg-slate-100 rounded-full transition-all text-slate-400 cursor-pointer"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="text-center mb-10">
+                <div className="w-20 h-20 bg-blue-600 rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-100">
+                  <Pencil size={40} className="text-white animate-pulse" />
+                </div>
+                <h2 className="text-3xl font-black text-slate-800 tracking-tight">Sửa tài khoản nguồn</h2>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-2 italic">Cập nhật cấu hình thông tin tài khoản ngân hàng nguồn.</p>
+              </div>
+
+              <form onSubmit={handleEditAccountSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nhóm ngân hàng</label>
+                  <select 
+                    value={editAccountForm.bankId}
+                    onChange={(e) => setEditAccountForm({ ...editAccountForm, bankId: e.target.value })}
+                    className="w-full px-6 py-4.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-600 transition-all text-sm"
+                  >
+                    {MASTER_BANKS.map(b => (
+                      <option key={b.id} value={b.id}>{b.shortName} - {b.fullName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tên gợi nhớ nguồn</label>
+                  <input 
+                    type="text"
+                    required
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-600"
+                    placeholder="VD: Techcombank Chuyển Tiền"
+                    value={editAccountForm.accountAlias}
+                    onChange={(e) => setEditAccountForm({ ...editAccountForm, accountAlias: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Số tài khoản chi quỹ</label>
+                  <input 
+                    type="text"
+                    required
+                    className="w-full px-6 py-4 bg-white border-2 border-slate-100 rounded-2xl font-bold font-mono outline-none focus:border-blue-600"
+                    placeholder="Nhập STK ngân hàng sở hữu"
+                    value={editAccountForm.accountNo}
+                    onChange={(e) => setEditAccountForm({ ...editAccountForm, accountNo: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Số dư bảo chứng ban đầu (VND)</label>
+                  <input 
+                    type="text"
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black font-mono focus:bg-white"
+                    placeholder="0"
+                    value={editAccountForm.openingBalance ? formatNumberInput(editAccountForm.openingBalance) : ""}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/\D/g, "");
+                      const num = clean ? parseInt(clean, 10) : 0;
+                      setEditAccountForm({ ...editAccountForm, openingBalance: num });
+                    }}
+                  />
+                </div>
+
+                <button 
+                  type="submit"
+                  className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-sm cursor-pointer"
+                >
+                  <CheckCircle2 size={20} />
+                  Xác nhận Cập nhật
                 </button>
               </form>
             </motion.div>
